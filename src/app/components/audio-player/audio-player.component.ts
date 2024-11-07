@@ -27,7 +27,7 @@ import { CommonModule } from '@angular/common';
         ></i>
       </button>
       <div class="flex items-center gap-2">
-        <div class="w-48 h-1 bg-gray-200 rounded cursor-pointer" (click)="seek($event)">
+        <div class="w-0 md:w-48 h-1 bg-gray-200 rounded cursor-pointer" (click)="seek($event)">
           <div 
             class="h-full bg-indigo-500 rounded transition-all duration-300" 
             [style.width.%]="progress"
