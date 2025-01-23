@@ -42,6 +42,7 @@ import { CommonModule } from '@angular/common';
 })
 export class AudioPlayerComponent implements AfterViewInit, OnDestroy {
   @Input() set audioUrl(value: string | undefined) {
+    console.log('Setting audio URL:', value);
     if (this._audioUrl !== value) {
       this._audioUrl = value || '';
       if (this.audio) {
@@ -75,15 +76,43 @@ export class AudioPlayerComponent implements AfterViewInit, OnDestroy {
     this.cleanup();
   }
 
-  private initializeAudio() {
-    this.audio = new Audio(this.audioUrl);
-    this.setupAudioEventListeners();
+  private async initializeAudio() {
+    try {
+      console.log('Initializing audio with URL:', this.audioUrl);
+      
+      // Criar elemento de áudio com os tipos MIME suportados
+      this.audio = new Audio();
+      this.audio.preload = 'metadata';
+      
+      // Configurar source com tipo MIME
+      const source = document.createElement('source');
+      source.src = this.audioUrl;
+      source.type = 'audio/mpeg';
+      this.audio.appendChild(source);
+
+      // Configurar CORS
+      this.audio.crossOrigin = 'anonymous';
+      
+      // Configurar event listeners
+      this.setupAudioEventListeners();
+      
+      // Carregar o áudio
+      await this.audio.load();
+      console.log('Audio loaded successfully');
+    } catch (error) {
+      console.error('Error initializing audio:', error);
+      this.cleanup();
+    }
   }
 
   private setupAudioEventListeners() {
     if (!this.audio) return;
 
     this.audio.addEventListener('loadedmetadata', () => {
+      console.log('Audio metadata loaded:', {
+        duration: this.audio?.duration,
+        readyState: this.audio?.readyState
+      });
       this.duration = this.audio?.duration || 0;
       this.cdr.detectChanges();
     });
@@ -104,20 +133,44 @@ export class AudioPlayerComponent implements AfterViewInit, OnDestroy {
     });
 
     this.audio.addEventListener('error', (e) => {
-      console.warn('Audio playback error:', e);
+      const error = this.audio?.error;
+      console.error('Audio playback error:', {
+        error,
+        code: error?.code,
+        message: error?.message,
+        networkState: this.audio?.networkState,
+        readyState: this.audio?.readyState
+      });
       this.isPlaying = false;
       this.cdr.detectChanges();
     });
 
-    // Preload the audio
-    this.audio.load();
+    // Adicionar listener para stalled e waiting
+    this.audio.addEventListener('stalled', () => {
+      console.warn('Audio playback stalled');
+    });
+
+    this.audio.addEventListener('waiting', () => {
+      console.warn('Audio playback waiting');
+    });
+
+    // Adicionar listener para canplay
+    this.audio.addEventListener('canplay', () => {
+      console.log('Audio can play');
+    });
+
+    // Adicionar listener para canplaythrough
+    this.audio.addEventListener('canplaythrough', () => {
+      console.log('Audio can play through');
+    });
   }
 
   private cleanup() {
     if (this.audio) {
       this.audio.pause();
-      this.audio.src = '';
-      this.audio.remove();
+      this.audio.removeAttribute('src');
+      Array.from(this.audio.children).forEach(child => child.remove());
+      this.audio.load(); // Limpar o buffer
       this.audio = undefined;
       this.isPlaying = false;
       this.currentTime = 0;
@@ -131,7 +184,7 @@ export class AudioPlayerComponent implements AfterViewInit, OnDestroy {
 
     try {
       if (this.isPlaying) {
-        this.audio.pause();
+        await this.audio.pause();
         this.isPlaying = false;
       } else {
         await this.audio.play();
@@ -139,7 +192,7 @@ export class AudioPlayerComponent implements AfterViewInit, OnDestroy {
       }
       this.cdr.detectChanges();
     } catch (error) {
-      console.warn('Error toggling audio playback:', error);
+      console.error('Error toggling audio playback:', error);
       this.isPlaying = false;
       this.cdr.detectChanges();
     }
@@ -151,17 +204,20 @@ export class AudioPlayerComponent implements AfterViewInit, OnDestroy {
     const element = event.currentTarget as HTMLElement;
     const rect = element.getBoundingClientRect();
     const x = event.clientX - rect.left;
-    const percentage = x / rect.width;
+    const percentage = x / element.offsetWidth;
+    const time = percentage * this.duration;
 
-    this.audio.currentTime = percentage * this.duration;
-    this.currentTime = this.audio.currentTime;
-    this.progress = percentage * 100;
-    this.cdr.detectChanges();
+    if (isFinite(time) && time >= 0 && time <= this.duration) {
+      this.audio.currentTime = time;
+      this.currentTime = time;
+      this.progress = percentage * 100;
+    }
   }
 
   getFormattedTime(seconds: number): string {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    if (!isFinite(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 }

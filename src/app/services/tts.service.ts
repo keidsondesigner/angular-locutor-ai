@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
-import { FirebaseService } from './firebase.service';
+import { HttpClient } from '@angular/common/http';
+import { BehaviorSubject, Observable, firstValueFrom } from 'rxjs';
 import { PinataService } from './pinata.service';
-import { BehaviorSubject, Observable } from 'rxjs';
 
 export interface TTSGeneration {
   id: string;
@@ -16,6 +16,7 @@ export interface TTSGeneration {
   providedIn: 'root',
 })
 export class TTSService {
+  private readonly apiUrl = 'http://localhost:3000';
   private isGenerating = new BehaviorSubject<boolean>(false);
   isGenerating$ = this.isGenerating.asObservable();
 
@@ -23,7 +24,7 @@ export class TTSService {
   generations$ = this.generations.asObservable();
 
   constructor(
-    private firebaseService: FirebaseService,
+    private http: HttpClient,
     private pinataService: PinataService
   ) {
     this.loadGenerations();
@@ -31,7 +32,9 @@ export class TTSService {
 
   private async loadGenerations() {
     try {
-      const data = await this.firebaseService.getGenerations();
+      const data = await firstValueFrom(
+        this.http.get<TTSGeneration[]>(`${this.apiUrl}/chat-locutor/tts/generations`)
+      );
       this.generations.next(data);
     } catch (error) {
       console.error('Error loading generations:', error);
@@ -43,40 +46,13 @@ export class TTSService {
     this.isGenerating.next(true);
 
     try {
-      const VOICE_ID = 'UaeEQHfiDI8l58WWXiwS';
-      const response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'xi-api-key': 'sk_d6323d237e2ae547b73d79cb5475b5b6097a06a56e0bc6be',
-          },
-          body: JSON.stringify({
-            text,
-            model_id: 'eleven_multilingual_v2',
-          }),
-        }
+      const result = await firstValueFrom(
+        this.http.post<TTSGeneration>(`${this.apiUrl}/chat-locutor/tts/generate`, {
+          text,
+          title
+        })
       );
 
-      if (!response.ok) {
-        throw new Error('Failed to generate speech');
-      }
-
-      const audioBlob = await response.blob();
-      const file = new File([audioBlob], `${Date.now()}.mp3`, {
-        type: 'audio/mpeg',
-      });
-
-      const { path } = await this.pinataService.uploadAudio(file);
-
-      const generation: Partial<TTSGeneration> = {
-        title,
-        content: text,
-        audio_path: path,
-      };
-
-      const result = await this.firebaseService.createGeneration(generation);
       await this.loadGenerations();
       return result;
     } catch (error) {
@@ -95,9 +71,15 @@ export class TTSService {
     return this.pinataService.getAudioUrl(path);
   }
 
+  getUrlUpdates() {
+    return this.pinataService.getUrlUpdates();
+  }
+
   async deleteGeneration(id: string): Promise<void> {
     try {
-      await this.firebaseService.deleteGeneration(id);
+      await firstValueFrom(
+        this.http.delete(`${this.apiUrl}/chat-locutor/tts/generation/${id}`)
+      );
       await this.loadGenerations();
     } catch (error) {
       console.error('Error deleting generation:', error);

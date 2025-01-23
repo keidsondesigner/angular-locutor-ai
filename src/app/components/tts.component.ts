@@ -2,7 +2,6 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TTSService, TTSGeneration } from '../services/tts.service';
-import { FirebaseService } from '../services/firebase.service';
 import { AudioPlayerComponent } from './audio-player/audio-player.component';
 import { Subscription } from 'rxjs';
 
@@ -82,7 +81,13 @@ import { Subscription } from 'rxjs';
             <p class="text-slate-500 mb-4">{{ gen.content }}</p>
             
             <div class="flex items-center justify-between">
-              <app-audio-player [audioUrl]="audioUrls[gen.audio_path]"></app-audio-player>
+              <app-audio-player 
+                *ngIf="audioUrls[gen.audio_path]"
+                [audioUrl]="audioUrls[gen.audio_path]">
+              </app-audio-player>
+              <div *ngIf="!audioUrls[gen.audio_path]" class="text-sm text-gray-500">
+                Carregando áudio...
+              </div>
               <div class="flex gap-2">
                 <button 
                   (click)="downloadAudio(gen)"
@@ -122,36 +127,31 @@ export class TTSComponent implements OnInit, OnDestroy {
   private subscriptions: Subscription[] = [];
 
   constructor(
-    private ttsService: TTSService,
-    private firebaseService: FirebaseService
+    private ttsService: TTSService
   ) {
-    this.isOffline = this.firebaseService.isOffline();
-  }
-
-  ngOnInit() {
     this.subscriptions.push(
       this.ttsService.getGenerations().subscribe((generations) => {
         this.generations = generations;
         this.loadAudioUrls();
+      }),
+      this.ttsService.getUrlUpdates().subscribe(urls => {
+        this.audioUrls = urls;
       })
     );
+  }
+
+  ngOnInit() {
   }
 
   ngOnDestroy() {
     this.subscriptions.forEach((sub) => sub.unsubscribe());
   }
 
-  private async loadAudioUrls() {
+  private loadAudioUrls() {
     for (const gen of this.generations) {
       if (!gen.id.startsWith('temp_') && !this.audioUrls[gen.audio_path]) {
-        try {
-          const url = await this.ttsService.getAudioUrl(gen.audio_path);
-          if (url) {
-            this.audioUrls = { ...this.audioUrls, [gen.audio_path]: url };
-          }
-        } catch (error) {
-          console.error('Error loading audio URL:', error);
-        }
+        const url = this.ttsService.getAudioUrl(gen.audio_path);
+        this.audioUrls = { ...this.audioUrls, [gen.audio_path]: url };
       }
     }
   }
@@ -168,10 +168,8 @@ export class TTSComponent implements OnInit, OnDestroy {
         this.title
       );
       if (!generation.id.startsWith('temp_')) {
-        const url = await this.ttsService.getAudioUrl(generation.audio_path);
-        if (url) {
-          this.audioUrls = { ...this.audioUrls, [generation.audio_path]: url };
-        }
+        const url = this.ttsService.getAudioUrl(generation.audio_path);
+        this.audioUrls = { ...this.audioUrls, [generation.audio_path]: url };
       }
       this.title = '';
       this.content = '';
@@ -187,42 +185,39 @@ export class TTSComponent implements OnInit, OnDestroy {
   }
 
   async downloadAudio(generation: TTSGeneration) {
-    if (generation.id.startsWith('temp_')) return;
+    const url = this.audioUrls[generation.audio_path];
+    if (!url) return;
 
     try {
-      const url = this.audioUrls[generation.audio_path];
-      if (!url) {
-        throw new Error('Audio URL not found');
-      }
-
       const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('Failed to download audio');
-      }
-
       const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = `${generation.title}.mp3`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(downloadUrl);
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${generation.title}.mp3`;
+      link.click();
+      URL.revokeObjectURL(link.href);
     } catch (error) {
       console.error('Error downloading audio:', error);
-      this.error = 'Failed to download audio';
+      this.error = 'Erro ao baixar o áudio. Por favor, tente novamente.';
     }
   }
 
   async deleteGeneration(generation: TTSGeneration) {
-    if (confirm('Deseja apagar esta geração?')) {
-      try {
-        await this.ttsService.deleteGeneration(generation.id);
-      } catch (error) {
-        console.error('Error deleting generation:', error);
-        this.error = 'Failed to delete generation';
-      }
+    // Mostrar confirmação antes de deletar
+    const confirmDelete = window.confirm(
+      `Tem certeza que deseja excluir a geração "${generation.title}"?`
+    );
+
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      await this.ttsService.deleteGeneration(generation.id);
+      delete this.audioUrls[generation.audio_path];
+    } catch (error) {
+      console.error('Error deleting generation:', error);
+      this.error = 'Erro ao deletar a geração. Por favor, tente novamente.';
     }
   }
 }
