@@ -16,7 +16,7 @@ export interface TTSGeneration {
   providedIn: 'root',
 })
 export class TTSService {
-  private readonly apiUrl = 'http://localhost:3000';
+  private readonly apiUrl = 'https://api-keidsonroby-ai.onrender.com';
   private isGenerating = new BehaviorSubject<boolean>(false);
   isGenerating$ = this.isGenerating.asObservable();
 

@@ -6,7 +6,7 @@ import { BehaviorSubject } from 'rxjs';
   providedIn: 'root'
 })
 export class PinataService {
-  private readonly apiUrl = 'http://localhost:3000';
+  private readonly apiUrl = 'https://api-keidsonroby-ai.onrender.com';
   private audioUrlCache = new BehaviorSubject<{ [key: string]: string }>({});
 
   constructor(private http: HttpClient) {}

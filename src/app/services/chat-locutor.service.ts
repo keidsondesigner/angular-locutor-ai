@@ -15,7 +15,7 @@ export interface ChatMessage {
   providedIn: 'root'
 })
 export class ChatLocutorService {
-  private readonly apiUrl = 'http://localhost:3000';
+  private readonly apiUrl = 'https://api-keidsonroby-ai.onrender.com';
 
   private messages = new BehaviorSubject<ChatMessage[]>([]);
   messages$ = this.messages.asObservable();
